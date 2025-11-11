@@ -1,4 +1,4 @@
-# 🧩 1NF_TO_3NF_DPOS SYSTEM
+# 🧩 1NF TO 3NF DPOS SYSTEM
 
 ## Overview
 
