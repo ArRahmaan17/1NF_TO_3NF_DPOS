@@ -1,7 +1,8 @@
+
 # 🧩 1NF to 3NF DPOS System
 
-This document describes the **Database Design** for a **Distributed Point of Sale (DPOS)** system, modeled and normalized from **First Normal Form (1NF)** to **Third Normal Form (3NF)**.  
-The schema integrates **RBAC (Role-Based Access Control)**, **Product Management**, **Warehouse Operations**, and **Discount Handling**, ensuring data consistency, scalability, and maintainability.
+This document describes the **Database Design** for a **DOGLEXABLE Point of Sale (DPOS)** system, modeled and normalized from **First Normal Form (1NF)** to **Third Normal Form (3NF)**.  
+The schema integrates **RBAC (Role-Based Access Control)**, **Product Management**, **Warehouse Operations**, **Discount Handling**, and **Transaction Management**, ensuring data consistency, scalability, and maintainability.
 
 ---
 
@@ -22,8 +23,13 @@ The database consists of multiple modular domains:
    - Supports multiple warehouses per company and products grouped into kits.
 
 4. **Discount & Promotions**  
-   - Tables: `discount`, `discount_code`, `discount_type`  
+   - Tables: `discount`, `discount_code`, `discount_type`, `discount_usage`  
    - Allows product-based and kit-based discounts, linked to companies.
+
+5. **Transactions & Inventory Movements**  
+   - Tables: `transactions`, `transaction_items`, `transaction_discounts`, `transaction_payments`  
+   - Tracks financial flows and real-time inventory adjustments across warehouses.  
+   - Includes `inventory_movements`, `inventory_movement_types`, and `product_adjustments` for complete audit trails.
 
 ---
 
@@ -47,7 +53,8 @@ This ensures **data integrity**, **efficient joins**, and **scalable updates**.
 - **Roles ↔ Scopes**: Hierarchical structure defined in `role_scope_inheritances`.  
 - **Products ↔ Kits**: Many-to-Many via `kit_product`.  
 - **Products ↔ Inventory ↔ Warehouse**: Tracks stock quantity per location.  
-- **Discounts**: Can target either `product` or `kit_product` via foreign keys.
+- **Transactions ↔ Inventory Movements**: Keeps real-time stock and financial synchronization.  
+- **Discounts**: Can target either `product` or `kit_product` via foreign keys.  
 
 ---
 
@@ -79,7 +86,9 @@ Each major table includes:
 | **Core** | `users`, `companies`, `user_companies` | Base identity and multi-company link |
 | **RBAC** | `roles`, `permissions`, `user_roles`, `role_permissions`, `scopes`, `role_scope_inheritances` | Hierarchical access control |
 | **Inventory** | `product`, `kit`, `kit_product`, `warehouse`, `inventory` | Stock and grouping system |
-| **Discounts** | `discount_type`, `discount_code`, `discount` | Promotions and couponing |
+| **Discounts** | `discount_type`, `discount_code`, `discount`, `discount_usage` | Promotions and couponing |
+| **Transactions** | `transactions`, `transaction_items`, `transaction_discounts`, `transaction_payments` | POS transaction details |
+| **Inventory Movement** | `inventory_movements`, `inventory_movement_types`, `product_adjustments` | Tracks all in/out stock operations |
 
 ---
 
@@ -95,7 +104,18 @@ Each major table includes:
 
 - Add **soft deletes** (`deleted_at`) for recovery safety.  
 - Introduce **event sourcing** for inventory movements.  
-- Extend RBAC with **endpoint-based policy enforcement**.
+- Extend RBAC with **endpoint-based policy enforcement**.  
+- Add **module-based logging table** to support audit and compliance reports.
+
+---
+
+## 🧾 Change Log
+
+### **v1.1.0**
+- Added Transaction & Inventory Movement modules.  
+- Linked `DiscountUsage` to `Transactions`.  
+- Introduced product adjustment logic for warehouse audits.  
+- Enhanced RBAC and company relations for scalability.
 
 ---
 
@@ -103,7 +123,7 @@ Each major table includes:
 
 Database modeled by **Ardhi Rahmaan**  
 Refined with **ChatGPT (GPT-5)** collaborative design.  
-Version: `v1.0.0`
+Version: `v1.1.0`
 
 ---
 
