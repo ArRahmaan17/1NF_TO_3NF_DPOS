@@ -1,209 +1,110 @@
-# 🧩 1NF TO 3NF DPOS SYSTEM
+# 🧩 1NF to 3NF DPOS System
 
-## Overview
-
-This project defines a **Role-Based Access Control (RBAC)** system that supports **multi-level scopes**, **hierarchical roles**, and **REST-method-based permissions**.
-
-It is designed for complex enterprise or multi-organization environments — for example, schools or companies where:
-
-- Some users have **global roles** (e.g., *Developer*, *System Admin*),
-- Others have **organization-level roles** (e.g., *School Principal*, *Teacher*),
-- And users can also **create custom roles** (e.g., *Club Treasurer*, *Event Manager*).
-
-The system supports:
-- Role inheritance within and across scopes  
-- Scoped access (global > organization > user-created)  
-- Fine-grained permissions mapped to REST methods  
-- Multi-organization user membership  
+This document describes the **Database Design** for a **Distributed Point of Sale (DPOS)** system, modeled and normalized from **First Normal Form (1NF)** to **Third Normal Form (3NF)**.  
+The schema integrates **RBAC (Role-Based Access Control)**, **Product Management**, **Warehouse Operations**, and **Discount Handling**, ensuring data consistency, scalability, and maintainability.
 
 ---
 
-## ⚙️ Key Concepts
+## 🧠 Design Overview
 
-### 1. Scopes
+The database consists of multiple modular domains:
 
-Scopes represent the **hierarchical level of control** in the system.
+1. **Core Entities**  
+   - `users`, `companies`  
+   - Users can belong to multiple companies through `user_companies`.
 
-| Level | Code | Description |
-|-------|------|-------------|
-| 3 | `global` | System-wide roles with the highest authority |
-| 2 | `organization` | Roles specific to an organization (e.g., a school) |
-| 1 | `user_created` | Roles created by users, for local use |
+2. **RBAC (Role-Based Access Control)**  
+   - Tables: `roles`, `permissions`, `user_roles`, `role_permissions`, `scopes`, `role_scope_inheritances`  
+   - Implements hierarchical, scope-based roles for flexible access management.
 
-Each scope is stored in the `scopes` table with a `level` indicating its hierarchy.
+3. **Inventory Management**  
+   - Tables: `warehouse`, `inventory`, `product`, `kit`, `kit_product`  
+   - Supports multiple warehouses per company and products grouped into kits.
 
----
-
-### 2. Roles
-
-Roles define what a user *is* within a specific scope.  
-Each role can have:
-- A parent role (for internal hierarchy)
-- A defined scope (global, organization, or user-created)
-- An optional `company_id` if it’s tied to an organization
-
-Example hierarchy:
-
-#### Role & Scope Hierarchy
-
-The RBAC system is built on two layers of hierarchy.
-
-##### 1. Scope Hierarchy (Top-Level)
-
-```
-Global (Level 3)
- └── Organization (Level 2)
-      └── User-Created (Level 1)
-```
-
-- **Global** — System-wide roles, managed by root or developer users.
-- **Organization** — Roles defined within a specific company or school.
-- **User-Created** — Roles created by organization users for internal needs (e.g., club leaders).
-
-##### 2. Role Hierarchy (Within Each Scope)
-
-Each scope can have its own internal role hierarchy, defined via `roles.parent_role_id`.
-
-###### Example (Global Scope)
-
-```
-Developer
- └── System Admin
-      └── Support Engineer
-```
-
-###### Example (Organization Scope)
-
-```
-Principal
- └── Teacher Admin
-      └── Teacher
-           └── Assistant Teacher
-```
-
-###### Example (User-Created Scope)
-
-```
-Club Leader
- └── Club Treasurer
-      └── Club Member
-```
-
-**Notes:**
-- Child roles inherit permissions and visibility as defined by your permission resolution logic (e.g., recursive permission aggregation).
-- Use `role_scopes.hierarchy_level` for quick comparisons across scopes (higher value = higher authority).
-- Use `roles.parent_role_id` and recursive queries (`WITH RECURSIVE`) to traverse role trees within a scope.
+4. **Discount & Promotions**  
+   - Tables: `discount`, `discount_code`, `discount_type`  
+   - Allows product-based and kit-based discounts, linked to companies.
 
 ---
 
-### 3. Permissions
+## 🧱 Normalization Summary
 
-Permissions are tied to **REST resources and methods**, enabling fine-grained access control.
+| Normal Form | Description | Implementation |
+|--------------|-------------|----------------|
+| **1NF** | Eliminated repeating groups and ensured atomicity. | Each attribute stores a single value per row. |
+| **2NF** | Removed partial dependencies. | Every non-key attribute depends on the entire primary key. |
+| **3NF** | Removed transitive dependencies. | Non-key attributes depend only on the key. |
 
-| Example Permission | Resource | Method | Description |
-|--------------------|-----------|---------|--------------|
-| `user.read` | `user` | `GET` | Allows reading user data |
-| `user.create` | `user` | `POST` | Allows creating users |
-| `user.update` | `user` | `PUT` | Allows editing users |
-| `user.delete` | `user` | `DELETE` | Allows deleting users |
-
-Each permission can also specify a **minimum scope level** (e.g., `global`-only).
+This ensures **data integrity**, **efficient joins**, and **scalable updates**.
 
 ---
 
-### 4. Role-Permission Mapping
+## 🧩 Key Relationships
 
-The table `role_permissions` maps roles to their allowed permissions.
-
-Example:
-- `System Admin` → can `user.read`, `user.create`, `user.update`, `user.delete`
-- `Teacher` → can only `user.read`
-
----
-
-### 5. User and Company Relationship
-
-- A user can belong to **multiple organizations** via `user_companies`
-- A user can hold **multiple roles** in different companies via `user_roles`
-
-This enables scenarios like:
-> A teacher who is also a club supervisor in the same school  
-> or  
-> An admin managing two different schools.
+- **Users ↔ Companies**: Many-to-Many via `user_companies`.  
+- **Users ↔ Roles**: Many-to-Many via `user_roles`.  
+- **Roles ↔ Permissions**: Many-to-Many via `role_permissions`.  
+- **Roles ↔ Scopes**: Hierarchical structure defined in `role_scope_inheritances`.  
+- **Products ↔ Kits**: Many-to-Many via `kit_product`.  
+- **Products ↔ Inventory ↔ Warehouse**: Tracks stock quantity per location.  
+- **Discounts**: Can target either `product` or `kit_product` via foreign keys.
 
 ---
 
-## 🧱 Database Schema (dbdiagram.io syntax)
+## 🔒 RBAC Hierarchy
 
-```sql
-Table users {
-  id int [pk, increment]
-  name varchar
-  email varchar [unique]
-  password varchar
-  created_at timestamp
-  updated_at timestamp
-}
+| Level | Scope Code | Description | Example |
+|-------|-------------|-------------|----------|
+| 3 | `global` | Access across all companies | Super Admin |
+| 2 | `organization` | Company-specific roles | Manager |
+| 1 | `user_created` | User-defined custom roles | Store Clerk |
 
-Table companies {
-  id int [pk, increment]
-  name varchar
-  description text
-  created_at timestamp
-  updated_at timestamp
-}
+Hierarchical inheritance allows roles at higher levels to create or manage lower-level scopes based on `role_scope_inheritances`.
 
-Table user_companies {
-  id int [pk, increment]
-  user_id int [ref: > users.id]
-  company_id int [ref: > companies.id]
-  created_at timestamp
-}
+---
 
-Table scopes {
-  id int [pk, increment]
-  code varchar [unique] // e.g. "global", "organization", "user_created"
-  name varchar
-  level smallint // global = 3, organization = 2, user_created = 1
-}
+## 🧰 Audit Fields
 
-Table roles {
-  id int [pk, increment]
-  name varchar
-  code varchar [unique]
-  parent_role_id int [ref: > roles.id]
-  scope_id int [ref: > scopes.id]
-  description text
-  created_at timestamp
-  updated_at timestamp
-}
+Each major table includes:
+- `created_at`, `updated_at` — timestamp tracking  
+- `created_by` — user reference for ownership auditing  
+- `company_id` — scope ownership for multi-tenant architecture
 
-Table user_roles {
-  id int [pk, increment]
-  user_id int [ref: > users.id]
-  role_id int [ref: > roles.id]
-  company_id int [ref: > companies.id, null]
-  created_at timestamp
-}
+---
 
-Table permissions {
-  id int [pk, increment]
-  code varchar [unique]
-  resource varchar
-  method varchar(10)
-  description text
-  min_scope_level smallint [default: 1]
-}
+## 🧮 Entities Summary
 
-Table role_permissions {
-  id int [pk, increment]
-  role_id int [ref: > roles.id]
-  permission_id int [ref: > permissions.id]
-}
+| Domain | Tables | Description |
+|--------|---------|-------------|
+| **Core** | `users`, `companies`, `user_companies` | Base identity and multi-company link |
+| **RBAC** | `roles`, `permissions`, `user_roles`, `role_permissions`, `scopes`, `role_scope_inheritances` | Hierarchical access control |
+| **Inventory** | `product`, `kit`, `kit_product`, `warehouse`, `inventory` | Stock and grouping system |
+| **Discounts** | `discount_type`, `discount_code`, `discount` | Promotions and couponing |
 
-Table role_scope_inheritances {
-  id int [pk, increment]
-  parent_scope_id int [ref: > scopes.id]
-  child_scope_id int [ref: > scopes.id]
-}
+---
 
+## ⚙️ Technology Compatibility
+
+- Designed for **PostgreSQL** and **MySQL** dialects.  
+- Exported using **dbdiagram.io syntax**.  
+- Compatible with **Laravel**, **Dockerized microservices**, and other backend frameworks.
+
+---
+
+## 📦 Future Enhancements
+
+- Add **soft deletes** (`deleted_at`) for recovery safety.  
+- Introduce **event sourcing** for inventory movements.  
+- Extend RBAC with **endpoint-based policy enforcement**.
+
+---
+
+## 🧑‍💻 Author
+
+Database modeled by **Ardhi Rahmaan**  
+Refined with **ChatGPT (GPT-5)** collaborative design.  
+Version: `v1.0.0`
+
+---
+
+> 🏁 _“A well-normalized schema isn’t just clean — it’s scalable, predictable, and future-proof.”_
