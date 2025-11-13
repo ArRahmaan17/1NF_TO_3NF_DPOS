@@ -1,8 +1,7 @@
-
-# 🧩 1NF to 3NF DPOS System
+# 🧩 DPOS System (v1.1.0)
 
 This document describes the **Database Design** for a **DOGLEXABLE Point of Sale (DPOS)** system, modeled and normalized from **First Normal Form (1NF)** to **Third Normal Form (3NF)**.  
-The schema integrates **RBAC (Role-Based Access Control)**, **Product Management**, **Warehouse Operations**, **Discount Handling**, and **Transaction Management**, ensuring data consistency, scalability, and maintainability.
+This version introduces **soft delete auditing** (`deleted_at`, `deleted_by`) across all tables for data recovery and compliance tracking.
 
 ---
 
@@ -12,24 +11,24 @@ The database consists of multiple modular domains:
 
 1. **Core Entities**  
    - `users`, `companies`  
-   - Users can belong to multiple companies through `user_companies`.
+   - Users can belong to multiple companies via `user_companies`.
 
 2. **RBAC (Role-Based Access Control)**  
    - Tables: `roles`, `permissions`, `user_roles`, `role_permissions`, `scopes`, `role_scope_inheritances`  
-   - Implements hierarchical, scope-based roles for flexible access management.
+   - Implements hierarchical, scope-based access control for multi-tenant environments.
 
 3. **Inventory Management**  
-   - Tables: `warehouse`, `inventory`, `product`, `kit`, `kit_product`  
-   - Supports multiple warehouses per company and products grouped into kits.
+   - Tables: `warehouse`, `inventory`, `inventory_movements`, `movement_types`, `product`, `kit`, `kit_product`  
+   - Tracks all product quantities across warehouses, with detailed movement logging.
 
 4. **Discount & Promotions**  
-   - Tables: `discount`, `discount_code`, `discount_type`, `discount_usage`  
-   - Allows product-based and kit-based discounts, linked to companies.
+   - Tables: `discount_type`, `discount_code`, `discount`  
+   - Supports dynamic discounts for products and kits.
 
-5. **Transactions & Inventory Movements**  
-   - Tables: `transactions`, `transaction_items`, `transaction_discounts`, `transaction_payments`  
-   - Tracks financial flows and real-time inventory adjustments across warehouses.  
-   - Includes `inventory_movements`, `inventory_movement_types`, and `product_adjustments` for complete audit trails.
+5. **Task Management**  
+   - Tables: `master_tasks`, `tasks`, `task_items`  
+   - Designed to handle both **recurring** (from `master_tasks`) and **ad-hoc** (from `tasks`) company-level activities.  
+   - All operations follow RBAC enforcement for access and ownership.
 
 ---
 
@@ -37,24 +36,22 @@ The database consists of multiple modular domains:
 
 | Normal Form | Description | Implementation |
 |--------------|-------------|----------------|
-| **1NF** | Eliminated repeating groups and ensured atomicity. | Each attribute stores a single value per row. |
-| **2NF** | Removed partial dependencies. | Every non-key attribute depends on the entire primary key. |
-| **3NF** | Removed transitive dependencies. | Non-key attributes depend only on the key. |
+| **1NF** | Atomic attributes | Each column stores a single value. |
+| **2NF** | Removed partial dependencies | Each non-key attribute depends on the full primary key. |
+| **3NF** | Removed transitive dependencies | All non-key fields depend only on the key. |
 
-This ensures **data integrity**, **efficient joins**, and **scalable updates**.
+Ensures **consistency**, **low redundancy**, and **easy maintenance**.
 
 ---
 
 ## 🧩 Key Relationships
 
-- **Users ↔ Companies**: Many-to-Many via `user_companies`.  
-- **Users ↔ Roles**: Many-to-Many via `user_roles`.  
-- **Roles ↔ Permissions**: Many-to-Many via `role_permissions`.  
-- **Roles ↔ Scopes**: Hierarchical structure defined in `role_scope_inheritances`.  
-- **Products ↔ Kits**: Many-to-Many via `kit_product`.  
-- **Products ↔ Inventory ↔ Warehouse**: Tracks stock quantity per location.  
-- **Transactions ↔ Inventory Movements**: Keeps real-time stock and financial synchronization.  
-- **Discounts**: Can target either `product` or `kit_product` via foreign keys.  
+- **Users ↔ Companies** — via `user_companies`  
+- **Users ↔ Roles** — via `user_roles`  
+- **Roles ↔ Permissions** — via `role_permissions`  
+- **Products ↔ Warehouses** — via `inventory`  
+- **Products ↔ Kits** — via `kit_product`  
+- **Tasks ↔ Master Tasks** — repetition control through `master_tasks`
 
 ---
 
@@ -63,68 +60,56 @@ This ensures **data integrity**, **efficient joins**, and **scalable updates**.
 | Level | Scope Code | Description | Example |
 |-------|-------------|-------------|----------|
 | 3 | `global` | Access across all companies | Super Admin |
-| 2 | `organization` | Company-specific roles | Manager |
-| 1 | `user_created` | User-defined custom roles | Store Clerk |
-
-Hierarchical inheritance allows roles at higher levels to create or manage lower-level scopes based on `role_scope_inheritances`.
+| 2 | `organization` | Company-specific | Manager |
+| 1 | `user_created` | Custom, user-generated roles | Store Clerk |
 
 ---
 
 ## 🧰 Audit Fields
 
-Each major table includes:
-- `created_at`, `updated_at` — timestamp tracking  
-- `created_by` — user reference for ownership auditing  
-- `company_id` — scope ownership for multi-tenant architecture
+All major tables include:
+
+| Field | Type | Purpose |
+|--------|-------|----------|
+| `created_at`, `updated_at` | timestamp | Modification tracking |
+| `created_by` | uuid | Record ownership |
+| `deleted_at`, `deleted_by` | timestamp / uuid | Soft delete auditing |
+| `company_id` | uuid | Multi-tenant isolation |
 
 ---
 
-## 🧮 Entities Summary
+## 🧮 Domain Overview
 
 | Domain | Tables | Description |
 |--------|---------|-------------|
-| **Core** | `users`, `companies`, `user_companies` | Base identity and multi-company link |
-| **RBAC** | `roles`, `permissions`, `user_roles`, `role_permissions`, `scopes`, `role_scope_inheritances` | Hierarchical access control |
-| **Inventory** | `product`, `kit`, `kit_product`, `warehouse`, `inventory` | Stock and grouping system |
-| **Discounts** | `discount_type`, `discount_code`, `discount`, `discount_usage` | Promotions and couponing |
-| **Transactions** | `transactions`, `transaction_items`, `transaction_discounts`, `transaction_payments` | POS transaction details |
-| **Inventory Movement** | `inventory_movements`, `inventory_movement_types`, `product_adjustments` | Tracks all in/out stock operations |
+| **Core** | `users`, `companies`, `user_companies` | Identity and multi-company linking |
+| **RBAC** | `roles`, `permissions`, `user_roles`, `role_permissions`, `scopes`, `role_scope_inheritances` | Role and access management |
+| **Inventory** | `products`, `warehouse`, `inventory`, `inventory_movements`, `movement_types`, `kit`, `kit_product` | Product tracking and movements |
+| **Discounts** | `discount_type`, `discount_code`, `discount` | Coupons and promos |
+| **Tasking** | `master_tasks`, `tasks`, `task_items` | Company task management and recurrence |
 
 ---
 
 ## ⚙️ Technology Compatibility
 
-- Designed for **PostgreSQL** and **MySQL** dialects.  
-- Exported using **dbdiagram.io syntax**.  
-- Compatible with **Laravel**, **Dockerized microservices**, and other backend frameworks.
+- Designed for **PostgreSQL** and **MySQL**  
+- Written in **dbdiagram.io syntax**  
+- Compatible with **Laravel**, **Docker**, and microservice architectures
 
 ---
 
-## 📦 Future Enhancements
+## 📦 Version
 
-- Add **soft deletes** (`deleted_at`) for recovery safety.  
-- Introduce **event sourcing** for inventory movements.  
-- Extend RBAC with **endpoint-based policy enforcement**.  
-- Add **module-based logging table** to support audit and compliance reports.
-
----
-
-## 🧾 Change Log
-
-### **v1.1.0**
-- Added Transaction & Inventory Movement modules.  
-- Linked `DiscountUsage` to `Transactions`.  
-- Introduced product adjustment logic for warehouse audits.  
-- Enhanced RBAC and company relations for scalability.
+**Version:** `v1.1.0`  
+**Change Type:** Added `deleted_at` and `deleted_by` to all entities
 
 ---
 
 ## 🧑‍💻 Author
 
 Database modeled by **Ardhi Rahmaan**  
-Refined with **ChatGPT (GPT-5)** collaborative design.  
-Version: `v1.1.0`
+Refined with **ChatGPT (GPT-5)** collaborative design
 
 ---
 
-> 🏁 _“A well-normalized schema isn’t just clean — it’s scalable, predictable, and future-proof.”_
+> _“A normalized schema with audit trails gives structure, traceability, and peace of mind.”_
